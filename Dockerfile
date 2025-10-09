@@ -1,15 +1,22 @@
-# Base image with Python 3.10
-FROM python:3.10-slim
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
-# Set working directory
-WORKDIR /app
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip git && \
+    apt-get clean
 
-# Copy and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python packages
+RUN pip3 install --upgrade pip
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip3 install git+https://github.com/huggingface/diffusers.git
+RUN pip3 install transformers==4.36.2 Pillow accelerate
 
-# Copy the rest of the repo
-COPY . .
+# Clone the Qwen-Image-Edit repo
+RUN git clone https://github.com/MozDevApps/Qwen-Image-Edit.git
+WORKDIR /Qwen-Image-Edit
 
-# Expose port 8080 and run FastAPI
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+# Expose port if using a web interface (e.g., Gradio)
+EXPOSE 7860
+
+# Default command
+CMD ["python3", "src/examples/demo.py"]
