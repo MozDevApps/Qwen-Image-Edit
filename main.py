@@ -4,16 +4,19 @@ from PIL import Image
 from io import BytesIO
 import torch
 
-# Import the pipeline from HuggingFace's GitHub version of diffusers
+# Import the pipeline from GitHub-installed diffusers
 from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
 
 app = FastAPI()
 
+# Use GPU if available
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 # Load the model
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     "Qwen/Qwen-Image-Edit-2509",
-    torch_dtype=torch.bfloat16
-).to("cuda")
+    torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32
+).to(device)
 
 @app.post("/generate")
 async def generate_image(
