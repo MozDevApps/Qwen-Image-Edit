@@ -1,5 +1,6 @@
 torch
 git+https://github.com/huggingface/transformers
+git+https://github.com/huggingface/huggingface_hub
 git+https://github.com/huggingface/diffusers
 fastapi
 uvicorn
