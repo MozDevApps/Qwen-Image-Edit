@@ -1,6 +1,6 @@
 torch
-diffusers
-transformers>=4.46.0
+transformers==4.46.3
+git+https://github.com/huggingface/diffusers
 fastapi
 uvicorn
 Pillow
