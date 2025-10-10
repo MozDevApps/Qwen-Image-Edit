@@ -1,5 +1,6 @@
 torch
-transformers
-Pillow
+diffusers
+transformers>=4.51.3
 fastapi
 uvicorn
+Pillow
