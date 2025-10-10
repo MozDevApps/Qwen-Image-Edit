@@ -2,7 +2,8 @@ from fastapi import FastAPI, UploadFile, Form
 from PIL import Image
 from io import BytesIO
 import torch
-from diffusers import QwenImageEditPlusPipeline
+from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
+
 
 app = FastAPI()
 pipe = QwenImageEditPlusPipeline.from_pretrained("Qwen/Qwen-Image-Edit-2509", torch_dtype=torch.bfloat16).to("cuda")
