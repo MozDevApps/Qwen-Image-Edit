@@ -1,16 +1,15 @@
 # Use NVIDIA CUDA base image with Python 3.10
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV COMFYUI_PATH=/workspace/ComfyUI
+ENV COMFYUI_PATH=/comfyui
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
-    python3.10-venv \
     git \
     wget \
     curl \
@@ -22,19 +21,107 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create workspace directory
-WORKDIR /workspace
+# Create working directory
+WORKDIR /comfyui
 
 # Clone ComfyUI
-RUN git clone https://github.com/comfyanonymous/ComfyUI.git ${COMFYUI_PATH}
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
+    git checkout master
+
+# Install PyTorch with CUDA support
+RUN pip3 install --no-cache-dir \
+    torch==2.1.2 \
+    torchvision==0.16.2 \
+    torchaudio==2.1.2 \
+    --index-url https://download.pytorch.org/whl/cu118
 
 # Install ComfyUI requirements
-WORKDIR ${COMFYUI_PATH}
-RUN apt-get update && apt-get install -y \
-    python3 python3-pip ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-RUN pip3 install --upgrade pip
+# Install additional dependencies
+RUN pip3 install --no-cache-dir \
+    runpod \
+    huggingface_hub \
+    safetensors \
+    accelerate \
+    transformers \
+    sentencepiece \
+    opencv-python-headless
+
+# Create model directories
+RUN mkdir -p \
+    models/diffusion_models \
+    models/text_encoders \
+    models/vae \
+    models/loras \
+    input \
+    output \
+    temp
+
+# Download models using wget with retry and progress
+# Main diffusion model (FP8 quantized - ~6.8GB)
+RUN echo "Downloading Qwen-Image-Edit-2509..." && \
+    wget --progress=bar:force:noscroll --tries=3 --timeout=30 \
+    -O models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors \
+    "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/qwen_image_edit_2509_fp8_e4m3fn.safetensors" || \
+    (echo "Failed to download diffusion model" && exit 1)
+
+# Text encoder (Qwen2.5-VL 7B FP8 - ~7.2GB)
+RUN echo "Downloading Qwen2.5-VL Text Encoder..." && \
+    wget --progress=bar:force:noscroll --tries=3 --timeout=30 \
+    -O models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors \
+    "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/qwen_2.5_vl_7b_fp8_scaled.safetensors" || \
+    (echo "Failed to download text encoder" && exit 1)
+
+# VAE model (~100MB)
+RUN echo "Downloading VAE..." && \
+    wget --progress=bar:force:noscroll --tries=3 --timeout=30 \
+    -O models/vae/qwen_image_vae.safetensors \
+    "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/qwen_image_vae.safetensors" || \
+    (echo "Failed to download VAE" && exit 1)
+
+# Lightning LoRA 4-step (~50MB)
+RUN echo "Downloading Lightning LoRA (4-step)..." && \
+    wget --progress=bar:force:noscroll --tries=3 --timeout=30 \
+    -O models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors \
+    "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-4steps-V1.0.safetensors" || \
+    (echo "Failed to download 4-step LoRA" && exit 1)
+
+# Lightning LoRA 8-step (~50MB)
+RUN echo "Downloading Lightning LoRA (8-step)..." && \
+    wget --progress=bar:force:noscroll --tries=3 --timeout=30 \
+    -O models/loras/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors \
+    "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors" || \
+    (echo "Failed to download 8-step LoRA" && exit 1)
+
+# Verify all models are downloaded
+RUN echo "Verifying models..." && \
+    ls -lh models/diffusion_models/ && \
+    ls -lh models/text_encoders/ && \
+    ls -lh models/vae/ && \
+    ls -lh models/loras/ && \
+    echo "All models downloaded successfully!"
+
+# Copy application files
+COPY handler.py /comfyui/handler.py
+COPY qwen_edit_workflow.json /comfyui/qwen_edit_workflow.json
+COPY startup.sh /comfyui/startup.sh
+
+# Set permissions
+RUN chmod +x handler.py startup.sh
+
+# Expose port
+EXPOSE 8188
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python3 -c "import requests; requests.get('http://localhost:8188/system_stats', timeout=5)" || exit 1
+
+# Set working directory
+WORKDIR /comfyui
+
+# Start the handler
+CMD ["bash", "startup.sh"]RUN pip3 install --upgrade pip
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 RUN pip3 install --no-cache-dir -r requirements.txt
 
