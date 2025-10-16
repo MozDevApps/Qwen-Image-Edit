@@ -1,5 +1,5 @@
 # Use NVIDIA CUDA base image with Python 3.10
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -30,6 +30,11 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git ${COMFYUI_PATH}
 
 # Install ComfyUI requirements
 WORKDIR ${COMFYUI_PATH}
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --upgrade pip
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 RUN pip3 install --no-cache-dir -r requirements.txt
 
