@@ -69,7 +69,7 @@ RUN echo "Downloading Qwen-Image-Edit-2509..." && \
 RUN echo "Downloading Qwen2.5-VL Text Encoder..." && \
     wget --progress=bar:force:noscroll --tries=3 --timeout=30 \
     -O models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/qwen_2.5_vl_7b_fp8_scaled.safetensors" || \
+    "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors" || \
     (echo "Failed to download text encoder" && exit 1)
 
 # VAE model (~100MB)
