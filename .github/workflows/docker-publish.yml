@@ -1,4 +1,5 @@
 name: Build and Push ComfyUI Qwen-Image-Edit to Docker Hub
+
 on:
   push:
     branches: [ main, develop ]
@@ -20,21 +21,77 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
+    
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
-
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
         driver-opts: |
           image=moby/buildkit:latest
           network=host
-
+    
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ env.PLATFORMS }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+        # Increase timeout for large model downloads
+        timeout-minutes: 90
+    
+    - name: Generate build summary
+      run: |
+        echo "## Build Summary 🚀" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** \`${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Models Included:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Qwen-Image-Edit-2509 (FP8)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Qwen2.5-VL 7B Text Encoder (FP8)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Qwen Image VAE" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Lightning LoRA (4-step & 8-step)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ✅ Build successful" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Deploy to RunPod" >> $GITHUB_STEP_SUMMARY
+        echo "1. Go to RunPod Serverless" >> $GITHUB_STEP_SUMMARY
+        echo
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
