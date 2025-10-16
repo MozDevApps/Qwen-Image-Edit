@@ -1,67 +1,90 @@
-#!/usr/bin/env python3
-"""Health check script for RunPod serverless"""
+name: Build and Push ComfyUI Qwen-Image-Edit to Docker Hub
+on:
+  push:
+    branches: [ main, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip health checks'
+        required: false
+        default: 'false'
 
-import requests
-import sys
-import time
+env:
+  DOCKER_IMAGE_NAME: comfyui-qwen-edit-runpod
+  PLATFORMS: linux/amd64
 
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
 
-def check_comfyui_health():
-    """Check if ComfyUI is responding"""
-    try:
-        response = requests.get("http://127.0.0.1:8188/system_stats", timeout=5)
-        return response.status_code == 200
-    except Exception:
-        return False
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
 
-def check_models_exist():
-    """Check if required models are present"""
-    from pathlib import Path
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: |
+          image=moby/buildkit:latest
+          network=host
 
-    required_files = [
-        "/workspace/ComfyUI/models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors",
-        "/workspace/ComfyUI/models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
-        "/workspace/ComfyUI/models/vae/qwen_image_vae.safetensors",
-        "/workspace/ComfyUI/models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors"
-    ]
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-    missing = []
-    for file_path in required_files:
-        if not Path(file_path).exists():
-            missing.append(file_path)
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
 
-    return len(missing) == 0, missing
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ env.PLATFORMS }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
 
-
-def main():
-    """Run health checks"""
-    print("Running health checks...")
-
-    # Check models
-    models_ok, missing = check_models_exist()
-    if not models_ok:
-        print("✗ Missing models:")
-        for model in missing:
-            print(f" - {model}")
-        return 1
-    else:
-        print("✓ All required models present")
-
-    # Check ComfyUI
-    print("Checking ComfyUI server...")
-    max_retries = 30
-    for i in range(max_retries):
-        if check_comfyui_health():
-            print("✓ ComfyUI is responding")
-            return 0
-
-        if i < max_retries - 1:
-            time.sleep(2)
-
-    print("✗ ComfyUI is not responding")
-    return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    - name: Generate build summary
+      run: |
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** \`${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Models Included:**" >> $GITHUB_STEP_SUMMARY
+        echo "- Qwen-Image-Edit-2509 (FP8)" >> $GITHUB_STEP_SUMMARY
+        echo "- Qwen2.5-VL 7B Text Encoder (FP8)" >> $GITHUB_STEP_SUMMARY
+        echo "- Qwen Image VAE" >> $GITHUB_STEP_SUMMARY
+        echo "- Lightning LoRA (4-step & 8-step)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** Build successful" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Deploy to RunPod" >> $GITHUB_STEP_SUMMARY
+        echo "1. Go to RunPod Serverless" >> $GITHUB_STEP_SUMMARY
